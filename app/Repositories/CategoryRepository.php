@@ -17,9 +17,9 @@ class CategoryRepository implements ICategoryRepository
     public function getCategoriesWithProducts($limit, $page, $search)
     {
         return $this->model
-            // ->with(['products' => function ($query) {
-            //     $query->oldest();
-            // }])
+            ->with(['products' => function ($query) {
+                $query->oldest();
+            }])
             ->where(function ($query) use ($search) {
                 if ($search) {
                     $query->orWhere('name', 'LIKE', '%' . $search . '%');
