@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\CategoryController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,10 +15,10 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('auth')->group(function () {
-    Route::post('login', [AuthController::class, 'login']); // Public route
+Route::post('login', [AuthController::class, 'login']);
 
-    Route::middleware('auth:api')->group(function () {
-        Route::post('logout', [AuthController::class, 'logout']); // Protected route
-    });
+Route::middleware('auth:api')->prefix('auth')->group(function () {
+    Route::post('logout', [AuthController::class, 'logout']);
+
+    Route::apiResource('categories', CategoryController::class);
 });
