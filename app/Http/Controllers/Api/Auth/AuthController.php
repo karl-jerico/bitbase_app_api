@@ -2,46 +2,69 @@
 
 namespace App\Http\Controllers\Api\Auth;
 
+use App\Constants\Define\HttpCode;
+use App\Constants\Define\HttpStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Services\AuthService;
 use Flugg\Responder\Http\Responses\SuccessResponseBuilder;
+use App\Traits\HandlesTransactionTrait;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    public function login(LoginRequest $request)
+    use HandlesTransactionTrait;
+
+    public $authService;
+
+    /**
+     * AuthController constructor
+     */
+    public function __construct(AuthService $authService)
     {
-        $user = User::where('email', $request->email)->first();
+        $this->authService = $authService;
+    }
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
-        }
+    public function login(LoginRequest $request): JsonResponse
+    {
+        return $this->runInTransaction(function () use ($request) {
+            $credentials = $request->only('email', 'password');
+            $isTooManyFailedAttempts = $this->authService
+                ->isTooManyFailedAttempts();
 
-        $token = $user->createToken('API_Token')->accessToken;
+            if (!$this->authService->attemptLogin($credentials) || $isTooManyFailedAttempts) {
+                $this->authService->recordFailedAttempt();
 
-        return responder()->success([
-            'token' => $token,
-            'expires_at' => now()->addDays(7),
-            'user' => $user
-        ])->respond();
+                $code = $isTooManyFailedAttempts ?
+                    HttpCode::EXCEED_LOGIN_ATTEMPTS : HttpCode::INVALID_LOGIN;
+
+                return responder()
+                    ->error($code)
+                    ->respond(HttpStatus::MISDIRECTED_REQUEST);
+            }
+
+            $this->authService->clearFailedAttempts();
+            $token = $this->authService->generateAuthToken();
+            return responder()
+                ->success(['token' => $token])
+                ->respond();
+        });
     }
 
 
     /**
      * Get the authenticated User.
      *
-     * @return \Flugg\Responder\Responder
      */
-    public function logout(): SuccessResponseBuilder
+    public function logout(): JsonResponse
     {
-        /** @var User $user */
-        $user = auth()->user();
-        $user->tokens()->delete();
+        $this->authService->revokeToken();
 
         return responder()->success([
-            'message' => 'Successfully logged out'
-        ]);
+            'message' => trans('auth.logout')
+        ])->respond();
     }
 }
